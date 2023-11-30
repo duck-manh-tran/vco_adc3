@@ -1,4 +1,5 @@
 import numpy as np
+import scipy
 import math
 import matplotlib.pyplot as plt
 
@@ -12,7 +13,7 @@ def main():
 	F_sample = 8e6;     # Over sampling frequency of ADC
 	div = 80;               								# Time division coefficiency
 	F_display = F_sample * div;                 								# Simulator frequency
-	transient_time = 1.1e-3;  			# Transient time of simulation
+	transient_time = 1.2e-3;  			# Transient time of simulation
 
 # --------------------- vco-adc3 model description --------------------------
 
@@ -66,6 +67,8 @@ def main():
 	print(sum(qtz))
 	print(len(pulse_v))
 	print(len(t))
+
+	plt.figure(1);
 	plt.subplot(4, 1, 1)
 	plt.plot(t, Vinp)	
 
@@ -82,10 +85,33 @@ def main():
 	
 	plt.subplot(4, 1, 4);
 	plt.plot(t_s, qtz);	
-	plt.grid()	
+	plt.grid();
+	
+	plt.figure(2);
+	fft_cal(qtz, F_sample, 8192); 
+
 	plt.show()
 
 	print ("End of this program")	
+
+def fft_cal (in_sig, F_samp, fft_window_length):
+	L = fft_window_length;
+	W_blackman = scipy.signal.windows.blackmanharris(L);
+	fft_input = in_sig[20:L+20];
+	
+	fft_input_window = fft_input * W_blackman ;
+	Y_adc = scipy.fftpack.fft(fft_input_window);
+	P2_adc = np.array( abs(Y_adc/L) );
+	print ( P2_adc )
+	print ( len(P2_adc) )
+	P1_adc = np.array( P2_adc[ 0 : int(L/2) ] );
+	P1_adc[1:-1] = 2 * P1_adc[1:-1];
+	P1_adc[0] = P1_adc[1];
+	P1_adc_db = 10*np.log(P1_adc) - max(10*np.log(P1_adc));
+	
+	f = F_samp * np.arange(0, L/2, 1, dtype=int) / L;
+	plt.semilogx(f, P1_adc_db); 
+	plt.grid();
 
 
 def DCO_sig_gen(D_val, Fs_dis, freq_f0, i_phase, L):
@@ -140,6 +166,8 @@ def VCO_sig_gen(Vin, Fs_dis, freq_f0, i_phase, L):
 	phase = phase % 1;
 	pulse = np.array(list(map(int, 2*phase))); 
 	return [pulse, phase]
+
+	
 
 main();
 
