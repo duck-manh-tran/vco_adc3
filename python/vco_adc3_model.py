@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 
 def main():
 # ----------------- setup time for the simulation ----------------
-	freq_vco = 5e6 * np.array([2, 9.6])			# Frequency range of the VCO
-	freq_dco = 5e6 * np.array([3.8, 15])			# Frequency range of the DCO
+	freq_vco = 5e6 * np.array([2.8, 9])			# Frequency range of the VCO
+	freq_dco = 5e6 * np.array([2, 15])			# Frequency range of the DCO
 	
 	F_sample = 8e6;     # Over sampling frequency of ADC
 	div = 80;               								# Time division coefficiency
 	F_display = F_sample * div;                 								# Simulator frequency
-	transient_time = 1.2e-3;  			# Transient time of simulation
+	transient_time = 2.1e-3;  			# Transient time of simulation
 
 # --------------------- vco-adc3 model description --------------------------
 
@@ -21,7 +21,7 @@ def main():
 	t = np.arange( 0, transient_time, 1/F_display);         				# Simulator time 
 	t = np.array(t[ 0 : (len(t_s) - 1) * div +1] ); 						# Get time in samples	
 # ----- Input signal generator -----
-	inputFreq = 5e3;			# frequency of input signal (Hz)
+	inputFreq = 7e3;			# frequency of input signal (Hz)
 	inputAmp = 0.4;					# amplitude of input signal (V)
 	Vinp =  inputAmp * np.cos( 2*math.pi * inputFreq*t );
 # ------------- Init VCO, DCO phase, counters quantizer -----------
@@ -61,13 +61,10 @@ def main():
 
 		qtz_tmp = udc2[-1];
 		udc2[-1] = 0
+#		udc1[-1] = udc1[-1] - qtz_tmp
 		udc1[-1] = (udc1[-1] - qtz_tmp + abs(udc1[-1] - qtz_tmp))/2
 		qtz = np.append (qtz, qtz_tmp)
 		
-	print(sum(qtz))
-	print(len(pulse_v))
-	print(len(t))
-
 	plt.figure(1);
 	plt.subplot(4, 1, 1)
 	plt.plot(t, Vinp)	
@@ -88,11 +85,62 @@ def main():
 	plt.grid();
 	
 	plt.figure(2);
-	fft_cal(qtz, F_sample, 8192); 
+	f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [1, 2]})
+#	plt.subplot(3, 1, 1);
+	a0.plot(decimation_filr(qtz, 100));
+
+	
+#	plt.subplot(3, 1, 2:3);
+	fft_cal(qtz, F_sample, 2*8196);	
 
 	plt.show()
 
 	print ("End of this program")	
+
+def decimation_filr(sig, rate):
+	decimation         = rate 		# any integer; powers of 2 work best.
+	stages             = 3			# pipelined I and C stages
+	gain = (decimation * 1) ** stages
+	c_stages = stages
+	i_stages = stages
+
+	## Generate Integrator and Comb lists (Python list of objects)
+	intes = [integrator() for obj in range(i_stages)]
+	combs = [comb()	    for obj in range(c_stages)]
+	output_samples = []
+	## Decimating CIC Filter
+	print("Running filter, this may take a while... ", end="")
+	for (pos, value) in enumerate(sig):
+		z = value
+		for i in range(i_stages):
+			z = intes[i].update(z)
+		
+		if (pos % decimation) == 0: 			# decimate is done here
+			for c in range(c_stages):
+				z = combs[c].update(z)
+				j = z
+			output_samples.append(j/gain) 	# normalise the gain
+	return output_samples
+	
+class integrator:
+	def __init__(self):
+		self.yn  = 0
+		self.ynm = 0
+	
+	def update(self, inp):
+		self.ynm = self.yn
+		self.yn  = (self.ynm + inp)
+		return (self.yn)
+		
+class comb:
+	def __init__(self):
+		self.xn  = 0
+		self.xnm = 0
+	
+	def update(self, inp):
+		self.xnm = self.xn
+		self.xn  = inp
+		return (self.xn - self.xnm)
 
 def fft_cal (in_sig, F_samp, fft_window_length):
 	L = fft_window_length;
